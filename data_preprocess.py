@@ -1,12 +1,14 @@
-# exec(open('chess_data_preparator3.py').read())
+# exec(open('data_preprocess.py').read())
 
 import chess.pgn
 import numpy as np
 import tensorflow as tf
 
 
-output = "train_dataset_2"
-chess_games = "C:/Users/radu/Desktop/WIN19/COMP4106/final_project/chess_games/chess_games2.pgn"
+output = "chess_games/train_dataset_100"
+chess_games = "C:/Users/radu/Desktop/WIN19/COMP4106/FINAL_project_4106/chess_games/chess_games2.pgn"
+print()
+print("Starting data preprocess...")
 print("Parsing games from" + chess_games)
 print("Output file will be: " + output)
 
@@ -61,12 +63,13 @@ while True:
                     break
             board.push(move)
     # break
-    # if count_games == 1000:
-        # break
+    if count_games == 1000:
+        break
 
-
-print(len(samples))
-print(len(labels))
+print()
+print()
+print("Positions extracted and processed: " + str(len(samples)))
+print("Associated position labels: " + str(len(labels)))
 
 samples = np.array(samples)
 samples = tf.keras.utils.normalize(samples, axis=1)

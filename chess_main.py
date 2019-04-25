@@ -1,4 +1,4 @@
-# exec(open('chess3.py').read())
+# exec(open('chess_main.py').read())
 #shortest mate: f2f3, e7e5, g2g4, d8h4
 
 import chess.engine
@@ -6,15 +6,11 @@ import chess
 from math import inf as infinity
 from copy import deepcopy
 import tensorflow as tf
-
-
 from keras.models import load_model
-# import chess.svg
-# from IPython.display import SVG
-
 import numpy as np
+import chess.pgn
 
-def data_preprocess(board2):
+def position_preprocess(board2):
     wrapper = []
     int_position = np.zeros(64, np.int8)
     for i in range(64):
@@ -30,21 +26,17 @@ def data_preprocess(board2):
         int_position[56] = 57
     if board2.has_kingside_castling_rights(chess.BLACK):
         int_position[63] = 57
-    
-    # print(board2)
-    
+
     if not board2.turn:
         int_position[:] = [x * -1 for x in int_position]
-    # elif board2.turn:
-        # int_position[:] = [x + 5 for x in int_position]
-    
+
     int_position = int_position.reshape(8,8)
     wrapper.append(int_position)
     wrapper = np.array(wrapper)
     wrapper = tf.keras.utils.normalize(wrapper, axis=1)
     return wrapper
 
-model = load_model('model_chess_final_2.h5')
+
 
 class Node(object):
 
@@ -52,7 +44,7 @@ class Node(object):
         self.board = board
         self.evaluation = 0
 
-    def heuristic(self):
+    def classical_eval(self):
         score = 0
         
         white_score = 0
@@ -182,27 +174,17 @@ class Node(object):
         white_score = white_material + white_control + white_pins + white_legal_moves + white_central_control + white_king_safety + white_central_pawns + white_queen_safety
         black_score = black_material + black_control + black_pins + black_legal_moves + black_central_control + black_king_safety + black_central_pawns + black_queen_safety
         score = white_score - black_score
-        
-        
-        
-        
         # print(self.board)
         # print(white_central_pawns)
         # print(score)
         # print()
         return score
     
-    def heuristic2(self):
+    def NN_evaluation(self):
         score = []
-        # print(self.board)
-        parsed_position = data_preprocess(self.board)
-        # print(parsed_position)
-        # print()
+        parsed_position = position_preprocess(self.board)
         score = model.predict(parsed_position)
-        # score = model.predict_classes(parsed_position)
-        # print(score)
         final_score = score[0][1] - score[0][0]
-        # print(final_score)
         return final_score
     
     def minimax(self, depth, alpha, beta, player, heuristic):
@@ -214,12 +196,9 @@ class Node(object):
             return self
         elif depth == 0:
             if heuristic == "classic":
-                self.evaluation = self.heuristic()
+                self.evaluation = self.classical_eval()
             elif heuristic == "machine_learn":
-                self.evaluation = self.heuristic2()
-            # print(self.evaluation)
-            # print(self.board)
-            # print()
+                self.evaluation = self.NN_evaluation()
             return self
         
         potential_moves = []
@@ -264,87 +243,93 @@ class Node(object):
             return min_position
 
 
-PRUNING = True
 
+
+def game_to_pgn(move_stack):
+    pgn_game = chess.pgn.Game()
+    pgn_game.headers["Event"] = "Example"
+    node = pgn_game.add_variation(move_stack[0])
+    for i in range(1, len(move_stack)):
+        node = node.add_variation(move_stack[i])
+    text_file = open("generated_games/game.pgn", "w")
+    text_file.write(str(pgn_game))
+    text_file.close()
+
+def chess_ai_move(ai_type):
+    game = Node(board)
+    best_position = game.minimax(3, -infinity, +infinity, True, ai_type)
+    best_move = best_position.board.move_stack[len(board.move_stack)]
+    board.push(best_move)
+    print(best_position.evaluation)
+
+def other_engine_move(engine):
+    result = engine.play(board, chess.engine.Limit(time=0.100))
+    best_move = result.move
+    board.push(result.move)
+
+def human_move():
+    move = input()
+    if move == "quit":
+        return "quit"
+    best_move = chess.Move.from_uci(move)
+    print(best_move)
+    if best_move in board.legal_moves:
+        board.push(best_move)
+    else:
+        print("Move not legal")
+
+
+
+
+
+PRUNING = True
 color = {True:"WHITE", False:"BLACK"}
 pieces = {1:"pawn", 2:"knight", 3:"bishop", 4:"rook", 5:"queen", 6:"king"}
 
+model = load_model('trained_models/model_chess_final.h5')
+
+engine_stockfish10 = chess.engine.SimpleEngine.popen_uci("C:/Users/radu/Desktop/WIN19/COMP4106/FINAL_project_4106/test_engines/stockfish_10_x64.exe")
+engine_komodo9 = chess.engine.SimpleEngine.popen_uci("C:/Users/radu/Desktop/WIN19/COMP4106/FINAL_project_4106/test_engines/komodo-9.02-64bit.exe")
+
+
+best_move = 0
+pgn_count = 0
 board = chess.Board()
 
-# SVG(chess.svg.board(board=board,size=400))
 
-engine_stockfish10 = chess.engine.SimpleEngine.popen_uci("C:/Users/radu/Downloads/stockfish-10-win/stockfish-10-win/Windows/stockfish_10_x64.exe")
-engine_komodo9 = chess.engine.SimpleEngine.popen_uci("C:/Users/radu/Downloads/komodo-9/komodo-9_9dd577/Windows/komodo-9.02-64bit.exe")
 
-import chess.pgn
-pgn_game = chess.pgn.Game()
-pgn_game.headers["Event"] = "Example"
-# node = pgn_game.add_variation(chess.Move.from_uci("e2e4"))
-# node = node.add_variation(chess.Move.from_uci("e7e5"))
-# node = node.add_variation(chess.Move.from_uci("f2f4"))
-# node = node.add_variation(chess.Move.from_uci("f2f4"))
 
-pgn_count = 0
-node = pgn_game
 
-game = Node(board)
-best_position = game.minimax(3, -infinity, +infinity, True, "machine_learn")
-best_move = best_position.board.move_stack[len(board.move_stack)]
-print(best_move)
-board.push(best_move)
-node = pgn_game.add_variation(best_move)
+
 while not board.is_game_over():
     print(board)
     print(color[board.turn] + " to move:")
-    #human playing as WHITE:
-    # if pgn_count == 4:
-            # break
+    pgn_count += 1
+    rett = ''
     if board.turn:
-        
-        game = Node(board)
-        best_position = game.minimax(3, -infinity, +infinity, True, "machine_learn")
-        best_move = best_position.board.move_stack[len(board.move_stack)]
-        board.push(best_move)
-        print(best_position.evaluation)
-        
-        
-        # result = engine_stockfish10.play(board, chess.engine.Limit(time=0.100))
-        # best_move = result.move
-        # board.push(result.move)
-        
-        # move = input()
-        # if move == "quit":
-            # break
-        # best_move = chess.Move.from_uci(move)
-        # print(best_move)
-        # if best_move in board.legal_moves:
-            # board.push(best_move)
-        # else:
-            # print("Move not legal WTF")
-        
-        node = node.add_variation(best_move)
-            
-        pgn_count += 1
-        
-    #AI playing as BLACK:
+        # rett = human_move()
+        chess_ai_move("machine_learn")
+        # chess_ai_move("classic")
+        # other_engine_move(engine_stockfish10)
+        # other_engine_move(engine_komodo9)
     else:
-        result = engine_komodo9.play(board, chess.engine.Limit(time=0.500))
-        best_move = result.move
-        board.push(best_move)
-        
-        # game = Node(board)
-        # best_position = game.minimax(2, -infinity, +infinity, False, "machine_learn")
-        # best_move = best_position.board.move_stack[len(board.move_stack)]
-        # board.push(best_move)
-        
-        node = node.add_variation(best_move)
-        
-        pgn_count += 1
+        # rett = human_move()
+        # chess_ai_move("machine_learn")
+        # chess_ai_move("classic")
+        other_engine_move(engine_stockfish10)
+        # other_engine_move(engine_komodo9)
     print(best_move)
     print("Move #" + str(pgn_count))
+    if rett == "quit":
+        break
 
 
 
+
+
+
+
+game_to_pgn(board.move_stack)
 print(board)
 print(board.move_stack)
 print(len(board.move_stack))
@@ -353,6 +338,3 @@ if board.is_checkmate():
 else:
     print("Game ended in a DRAW!")
 
-text_file = open("game_pgn.txt", "w")
-text_file.write(str(pgn_game))
-text_file.close()
